@@ -14,6 +14,7 @@ const apiKey = BYBIT_API_KEY
 const apiSecret = BYBIT_API_SECRET
 const bybitService = new BybitService(apiKey, apiSecret);
 
+console.log({ apiKey, apiSecret });
 
 router.get('/market/:symbol', async (req: Request, res: Response) => {
     try {
@@ -143,5 +144,16 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
         res.status(500).json({ error: error.message });
     }
 });
+
+//mostrar variables de entorno
+router.get('/env', (req: Request, res: Response) => {
+    res.json({
+        BYBIT_API_KEY,
+        BYBIT_API_SECRET,
+        ORDER_QTY,
+        WEBHOOK_SECRET
+    });
+}
+);
 
 export default router;
