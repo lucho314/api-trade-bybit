@@ -40,9 +40,15 @@ router.get('/account', async (req: Request, res: Response) => {
         const info = await bybitService.getAccountInfo();
         res.json(info);
     } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        // Debug extendido para ver respuesta completa de la API
+        console.error("Bybit error response:", error?.response?.data || error);
+
+        res.status(500).json({
+            error: error.message,
+            detail: error?.response?.data || null
+        });
     }
-});
+})
 
 router.post('/position/tpsl', async (req: Request, res: Response) => {
     const { symbol, stopLoss, takeProfit } = req.body;
