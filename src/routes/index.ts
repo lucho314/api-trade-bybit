@@ -1,9 +1,8 @@
 import express, { Router, Request, Response } from 'express';
 import BybitService from '../services/bybitService';
 
-import { DateTime } from 'luxon';
 import pool from '../db/postgres';
-import { BYBIT_API_KEY, BYBIT_API_SECRET, ORDER_QTY, WEBHOOK_SECRET } from '../constats';
+import { BYBIT_API_KEY, BYBIT_API_SECRET, DELAY_MS, ORDER_QTY, PORT, WEBHOOK_SECRET } from '../constats';
 
 
 const router = Router();
@@ -69,9 +68,68 @@ router.get('/funding-balance', async (req: Request, res: Response) => {
     }
 });
 
+router.get('/position/:symbol', async (req: Request, res: Response) => {
+    try {
+        const position = await bybitService.getOpenPosition(req.params.symbol);
+        if (position) {
+            res.json({ open: true, position });
+        } else {
+            res.json({ open: false, position: null });
+        }
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+
+async function abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, takeProfit }: any) {
+    try {
+        const marketData = await bybitService.getMarketData(symbol);
+        const price = Number(marketData.result.list?.[0]?.lastPrice);
+        if (!price || isNaN(price)) {
+            console.error('No se pudo obtener el precio de mercado');
+            return;
+        }
+        let takeProfitPrice: number;
+        let stopLossPrice: number;
+        if (side === 'Buy') {
+            takeProfitPrice = price * (1 + (takeProfit / 100) / leverage);
+            stopLossPrice = price * (1 - (takeProfit / 100) / leverage);
+        } else {
+            takeProfitPrice = price * (1 - (takeProfit / 100) / leverage);
+            stopLossPrice = price * (1 + (stopLoss / 100) / leverage);
+        }
+        const result = await bybitService.placeOrder(
+            symbol,
+            side,
+            'Market',
+            qty,
+            undefined,
+            leverage,
+            stopLossPrice,
+            takeProfitPrice
+        );
+        await pool.query(
+            `INSERT INTO orders (symbol, side, order_type, qty, leverage, stop_loss, take_profit)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [symbol, side, 'Market', qty, leverage, stopLoss, takeProfit]
+        );
+        const message = `Nueva orden: ${side} ${qty} ${symbol} a precio de mercado. TP: ${takeProfit}%, SL: ${stopLoss}%`;
+        const whatsappUrl = `https://api.callmebot.com/whatsapp.php?phone=5493434697053&text=${encodeURIComponent(message)}&apikey=8494152`;
+        await fetch(whatsappUrl);
+        console.log(`Orden registrada: ${JSON.stringify(result)}`);
+    } catch (error: any) {
+        console.error('Error al abrir orden con delay:', error.message);
+    }
+}
+
 // Webhook para recibir alertas de trading
 router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
     const { clave, tipo, symbol } = req.body;
+
+    // console.log(`Webhook recibido: ${JSON.stringify(req.body)}`);
+    // await fetch(`https://api.callmebot.com/whatsapp.php?phone=5493434697053&text=${encodeURIComponent(JSON.stringify(req.body))}&apikey=8494152`);
 
     // Valida la clave secreta
     if (clave !== WEBHOOK_SECRET) {
@@ -84,80 +142,63 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
         res.status(400).json({ error: 'Solo se permite operar BTCUSDT' });
         return;
     }
+    
+    // // Validación de horario y día (hora de México)
+    // const now = DateTime.now().setZone('America/Mexico_City');
+    // const day = now.weekday; // 1 = lunes, 7 = domingo
+    // const hour = now.hour;
 
-    // Validación de horario y día (hora de México)
-    const now = DateTime.now().setZone('America/Mexico_City');
-    const day = now.weekday; // 1 = lunes, 7 = domingo
-    const hour = now.hour;
+    // console.log(`Día: ${day}, Hora: ${hour}`); // Para depuración
 
-    console.log(`Día: ${day}, Hora: ${hour}`); // Para depuración
-
-    if (day > 5 || hour < 6 || hour >= 22) {
-        res.status(403).json({ error: 'Fuera de horario permitido para operar (Lunes a Viernes de 6:00 a 22:00 hora de México)' });
-        return;
-    }
+    // if (day > 5 || hour < 6 || hour >= 22) {
+    //     res.status(403).json({ error: 'Fuera de horario permitido para operar (Lunes a Viernes de 6:00 a 22:00 hora de México)' });
+    //     return;
+    // }
 
     // Determina el lado de la orden
     let side: 'Buy' | 'Sell';
-    if (tipo === 'long') {
-        side = 'Buy';
-    } else if (tipo === 'short') {
-        side = 'Sell';
+    if (req.body.tipo && typeof req.body.tipo === 'string') {
+        if (req.body.tipo.toLowerCase() === 'buy') {
+            side = 'Buy';
+        } else if (req.body.tipo.toLowerCase() === 'sell') {
+            side = 'Sell';
+        } else {
+            res.status(400).json({ error: 'Tipo de orden no soportado' });
+            return;
+        }
     } else {
-        res.status(400).json({ error: 'Tipo de orden no soportado' });
+        res.status(400).json({ error: 'Falta el campo side' });
+        return;
+    }
+
+    // Antes de abrir una nueva posición, verificar si ya existe una posición abierta
+    const openPosition = await bybitService.getOpenPosition(symbol);
+    if (openPosition) {
+        res.status(400).json({ error: 'Ya existe una posición abierta para este símbolo' });
         return;
     }
 
     // Configuración de la estrategia
-    const leverage = 40;
     const qty = ORDER_QTY;
     const takeProfit = 12; // 12%
     const stopLoss = 50;   // 50%
+    const leverage = 40;
 
-    try {
-        // const result = await bybitService.placeOrder(
-        //     symbol,
-        //     side,
-        //     'Market',
-        //     qty,
-        //     undefined, // price no es necesario para Market
-        //     leverage,
-        //     stopLoss,
-        //     takeProfit
-        // );
+    // Ejecutar la apertura de orden con delay
+    setTimeout(() => {
+        abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, takeProfit });
+    }, DELAY_MS);
 
-        // Registrar la orden en PostgreSQL
-        await pool.query(
-            `INSERT INTO orders (symbol, side, order_type, qty, leverage, stop_loss, take_profit)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [symbol, tipo === 'long' ? 'Buy' : 'Sell', 'Market', qty, leverage, stopLoss, takeProfit]
-        );
-
-        // Respuesta simulada
-        const result = {
-            symbol,
-            side,
-            orderType: 'Market',
-            qty,
-            leverage,
-            stopLoss,
-            takeProfit,
-            status: 'Order placed successfully (mocked response)'
-        };
-
-        res.json({ status: 'ok', result });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
+    res.json({ status: 'ok', message: `La orden se ejecutará en ${DELAY_MS / 1000} segundos` });
 });
 
 //mostrar variables de entorno
 router.get('/env', (req: Request, res: Response) => {
     res.json({
         BYBIT_API_KEY,
-        BYBIT_API_SECRET,
         ORDER_QTY,
-        WEBHOOK_SECRET
+        DELAY_MS,
+        PORT
     });
 }
 );

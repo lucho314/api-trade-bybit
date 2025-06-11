@@ -49,6 +49,7 @@ class BybitService {
         timeInForce: 'GTC',
         ...(stopLoss ? { stopLoss: stopLoss.toString() } : {}),
         ...(takeProfit ? { takeProfit: takeProfit.toString() } : {}),
+       // marketUnit: 'quoteCoin',
       });
       return response;
     } catch (error: any) {
@@ -103,6 +104,20 @@ class BybitService {
     throw new Error(`Error actualizando SL/TP: ${error.message}`);
   }
 }
+
+  async getOpenPosition(symbol: string): Promise<any> {
+    try {
+      const response = await this.client.getPositionInfo({
+        category: 'linear',
+        symbol
+      });
+      // Busca la posición abierta (size > 0)
+      const position = response.result?.list?.find((pos: any) => parseFloat(pos.size) !== 0);
+      return position || null;
+    } catch (error: any) {
+      throw new Error(`Error consultando posición abierta: ${error.message}`);
+    }
+  }
 
   //obtener datos de mi cuenta
   
