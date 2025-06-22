@@ -1,8 +1,9 @@
 import express, { Router, Request, Response } from 'express';
 import BybitService from '../services/bybitService';
 
-import pool from '../db/postgres';
+//import pool from '../db/postgres';
 import { BYBIT_API_KEY, BYBIT_API_SECRET, DELAY_MS, ORDER_QTY, PORT, WEBHOOK_SECRET } from '../constats';
+import { insertarOperacion } from '../respository/orderRepository';
 
 
 const router = Router();
@@ -25,7 +26,9 @@ router.get('/market/:symbol', async (req: Request, res: Response) => {
 });
 
 router.post('/order', async (req: Request, res: Response) => {
-    const { symbol, side, orderType, qty, price, leverage, stopLoss, takeProfit } = req.body;
+    const { symbol, side, orderType, qty, price, leverage, stopLoss, takeProfit,order } = req.body;
+    //si la order contiene en el string TP no hacer nada
+   
     try {
         const result = await bybitService.placeOrder(symbol, side, orderType, qty, price, leverage, stopLoss, takeProfit);
         res.json(result);
@@ -91,15 +94,10 @@ async function abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, take
             console.error('No se pudo obtener el precio de mercado');
             return;
         }
-        let takeProfitPrice: number;
-        let stopLossPrice: number;
-        if (side === 'Buy') {
-            takeProfitPrice = price * (1 + (takeProfit / 100) / leverage);
-            stopLossPrice = price * (1 - (takeProfit / 100) / leverage);
-        } else {
-            takeProfitPrice = price * (1 - (takeProfit / 100) / leverage);
-            stopLossPrice = price * (1 + (stopLoss / 100) / leverage);
-        }
+        
+        const { takeProfitPrice, stopLossPrice } = calculateTPandSL(price, side, takeProfit, stopLoss, leverage);
+
+
         const result = await bybitService.placeOrder(
             symbol,
             side,
@@ -110,15 +108,19 @@ async function abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, take
             stopLossPrice,
             takeProfitPrice
         );
-        await pool.query(
-            `INSERT INTO orders (symbol, side, order_type, qty, leverage, stop_loss, take_profit)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [symbol, side, 'Market', qty, leverage, stopLoss, takeProfit]
-        );
-        const message = `Nueva orden: ${side} ${qty} ${symbol} a precio de mercado. TP: ${takeProfit}%, SL: ${stopLoss}%`;
-        const whatsappUrl = `https://api.callmebot.com/whatsapp.php?phone=5493434697053&text=${encodeURIComponent(message)}&apikey=8494152`;
-        await fetch(whatsappUrl);
-        console.log(`Orden registrada: ${JSON.stringify(result)}`);
+
+      //  console.log(`Orden abierta: ${JSON.stringify(result)}`);
+
+        // await pool.query(
+        //     `INSERT INTO orders (symbol, side, order_type, qty, leverage, stop_loss, take_profit)
+        //      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        //     [symbol, side, 'Market', qty, leverage, stopLoss, takeProfit]
+        // );
+        // const message = `Nueva orden: ${side} ${qty} ${symbol} a precio de mercado. TP: ${takeProfit}%, SL: ${stopLoss}%`;
+        // const whatsappUrl = `https://api.callmebot.com/whatsapp.php?phone=5493434697053&text=${encodeURIComponent(message)}&apikey=8494152`;
+        // await fetch(whatsappUrl);
+        const { orderId } = result.result;
+        const order = await bybitService.getOrderEntryPrice(orderId,symbol);
     } catch (error: any) {
         console.error('Error al abrir orden con delay:', error.message);
     }
@@ -126,7 +128,7 @@ async function abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, take
 
 // Webhook para recibir alertas de trading
 router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
-    const { clave, tipo, symbol } = req.body;
+    const { clave, tipo, symbol,order } = req.body;
 
     // console.log(`Webhook recibido: ${JSON.stringify(req.body)}`);
     // await fetch(`https://api.callmebot.com/whatsapp.php?phone=5493434697053&text=${encodeURIComponent(JSON.stringify(req.body))}&apikey=8494152`);
@@ -142,19 +144,23 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
         res.status(400).json({ error: 'Solo se permite operar BTCUSDT' });
         return;
     }
+
+     if (order && order.includes('TP')) {
+       await bybitService.closePosition(symbol);
+        console.log(`Orden de cierre por TP recibida para ${symbol}`);
+        setTimeout(async () => {
+            const PNL = await bybitService.getClosedPnL(symbol);
+            if (!PNL) {
+                return;
+            }
+
+            insertarOperacion(PNL);
+
+        }, 3000 ); 
+
+        return;
+    }
     
-    // // Validación de horario y día (hora de México)
-    // const now = DateTime.now().setZone('America/Mexico_City');
-    // const day = now.weekday; // 1 = lunes, 7 = domingo
-    // const hour = now.hour;
-
-    // console.log(`Día: ${day}, Hora: ${hour}`); // Para depuración
-
-    // if (day > 5 || hour < 6 || hour >= 22) {
-    //     res.status(403).json({ error: 'Fuera de horario permitido para operar (Lunes a Viernes de 6:00 a 22:00 hora de México)' });
-    //     return;
-    // }
-
     // Determina el lado de la orden
     let side: 'Buy' | 'Sell';
     if (req.body.tipo && typeof req.body.tipo === 'string') {
@@ -172,11 +178,11 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Antes de abrir una nueva posición, verificar si ya existe una posición abierta
-    const openPosition = await bybitService.getOpenPosition(symbol);
-    if (openPosition) {
-        res.status(400).json({ error: 'Ya existe una posición abierta para este símbolo' });
-        return;
-    }
+   // const openPosition = await bybitService.getOpenPosition(symbol);
+    // if (openPosition) {
+    //     res.status(400).json({ error: 'Ya existe una posición abierta para este símbolo' });
+    //     return;
+    // }
 
     // Configuración de la estrategia
     const qty = ORDER_QTY;
@@ -185,11 +191,11 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
     const leverage = 40;
 
     // Ejecutar la apertura de orden con delay
-    setTimeout(() => {
-        abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, takeProfit });
-    }, DELAY_MS);
+   // setTimeout(() => {
+       await abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, takeProfit });
+    //}, DELAY_MS);
 
-    res.json({ status: 'ok', message: `La orden se ejecutará en ${DELAY_MS / 1000} segundos` });
+    res.json({ status: 'ok', message: `La orden ejecutada` });
 });
 
 //mostrar variables de entorno
@@ -202,5 +208,40 @@ router.get('/env', (req: Request, res: Response) => {
     });
 }
 );
+
+
+function calculateTPandSL(price:number, side:string, takeProfit:number, stopLoss:number, leverage:number) {
+    if (side === 'Buy') {
+        return {
+            takeProfitPrice: price * (1 + (takeProfit / 100) / leverage),
+            stopLossPrice:   price * (1 - (stopLoss / 100) / leverage),
+        };
+    } else {
+        return {
+            takeProfitPrice: price * (1 - (takeProfit / 100) / leverage),
+            stopLossPrice:   price * (1 + (stopLoss / 100) / leverage),
+        };
+    }
+}
+
+
+//getOrderResult
+
+router.get('/order/:orderId/:symbol', async (req: Request, res: Response) => {
+    const { orderId, symbol } = req.params;
+    try {
+        console.log(`Obteniendo resultado de la orden ${orderId} para el símbolo ${symbol}`);
+        const result = await bybitService.detectarCierrePorSLTP(symbol,orderId);
+
+
+        if (result) {
+            res.json(result);
+        } else {
+            res.status(404).json({ error: 'Orden no encontrada' });
+        }
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 export default router;

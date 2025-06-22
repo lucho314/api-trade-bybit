@@ -1,25 +1,8 @@
-import { Pool } from 'pg';
+import postgres from 'postgres'
 import { DATABASE_URL } from '../constats';
 
-const pool = new Pool({
-    connectionString: DATABASE_URL ,
-    ssl: { rejectUnauthorized: false }
-});
+console.log('Conectando a la base de datos:', DATABASE_URL);
 
-export async function initDb() {
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS orders (
-            id SERIAL PRIMARY KEY,
-            symbol VARCHAR(20),
-            side VARCHAR(10),
-            order_type VARCHAR(10),
-            qty NUMERIC,
-            leverage INTEGER,
-            stop_loss NUMERIC,
-            take_profit NUMERIC,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-    `);
-}
+const sql = postgres(DATABASE_URL);
 
-export default pool;
+export default sql;
