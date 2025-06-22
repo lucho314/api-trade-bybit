@@ -8,7 +8,6 @@ class BybitServiceV2 {
     this.client = new RestClientV5({
       key: BYBIT_API_KEY,
       secret: BYBIT_API_SECRET,
-      testnet: true, // Set to false for production
     });
   }
 
