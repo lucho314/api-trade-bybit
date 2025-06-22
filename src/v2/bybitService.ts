@@ -125,6 +125,15 @@ class BybitServiceV2 {
     }
   }
 
+   async getAccountInfo(): Promise<any> {
+    try {
+      const response = await this.client.getWalletBalance({ accountType: 'UNIFIED', coin: 'USDT' });
+      return response;
+    } catch (error: any) {
+      throw new Error(`Error fetching account info: ${error.message}`);
+    }
+  }
+
 
 }
 

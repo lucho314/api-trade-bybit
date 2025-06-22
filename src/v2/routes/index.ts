@@ -107,5 +107,17 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
 });
 
 
+//acountInfo
+router.get('/accountInfo', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const accountInfo = await bybitService.getAccountInfo();
+        res.json(accountInfo);
+    }
+    catch (error) {
+        console.error('Error al obtener la información de la cuenta:', error);
+        res.status(500).json({ error: 'Error al obtener la información de la cuenta' });
+    }
+}
+);
 
 export default router;0
