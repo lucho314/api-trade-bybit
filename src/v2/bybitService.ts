@@ -48,7 +48,7 @@ class BybitServiceV2 {
       if (!response || !response.result || !response.result.orderId) {
         throw new Error('Error al colocar la orden: respuesta inválida');
       }
-    
+      // orderId and Pri
       const { orderId } = response.result;
 
       return orderId;

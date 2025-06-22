@@ -1,9 +1,8 @@
 import express, { Router, Request, Response } from 'express';
 import BybitService from '../services/bybitService';
 
-//import pool from '../db/postgres';
+import pool from '../db/postgres';
 import { BYBIT_API_KEY, BYBIT_API_SECRET, DELAY_MS, ORDER_QTY, PORT, WEBHOOK_SECRET } from '../constats';
-import { insertarOperacion } from '../respository/orderRepository';
 
 
 const router = Router();
@@ -108,19 +107,15 @@ async function abrirOrdenConLogica({ symbol, side, qty, leverage, stopLoss, take
             stopLossPrice,
             takeProfitPrice
         );
-
-      //  console.log(`Orden abierta: ${JSON.stringify(result)}`);
-
-        // await pool.query(
-        //     `INSERT INTO orders (symbol, side, order_type, qty, leverage, stop_loss, take_profit)
-        //      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        //     [symbol, side, 'Market', qty, leverage, stopLoss, takeProfit]
-        // );
+        await pool.query(
+            `INSERT INTO orders (symbol, side, order_type, qty, leverage, stop_loss, take_profit)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [symbol, side, 'Market', qty, leverage, stopLoss, takeProfit]
+        );
         // const message = `Nueva orden: ${side} ${qty} ${symbol} a precio de mercado. TP: ${takeProfit}%, SL: ${stopLoss}%`;
         // const whatsappUrl = `https://api.callmebot.com/whatsapp.php?phone=5493434697053&text=${encodeURIComponent(message)}&apikey=8494152`;
         // await fetch(whatsappUrl);
-        const { orderId } = result.result;
-        const order = await bybitService.getOrderEntryPrice(orderId,symbol);
+        console.log(`Orden registrada: ${JSON.stringify(result)}`);
     } catch (error: any) {
         console.error('Error al abrir orden con delay:', error.message);
     }
@@ -147,20 +142,21 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
 
      if (order && order.includes('TP')) {
        await bybitService.closePosition(symbol);
-        console.log(`Orden de cierre por TP recibida para ${symbol}`);
-        setTimeout(async () => {
-            const PNL = await bybitService.getClosedPnL(symbol);
-            if (!PNL) {
-                return;
-            }
-
-            insertarOperacion(PNL);
-
-        }, 3000 ); 
-
         return;
     }
     
+    // // Validación de horario y día (hora de México)
+    // const now = DateTime.now().setZone('America/Mexico_City');
+    // const day = now.weekday; // 1 = lunes, 7 = domingo
+    // const hour = now.hour;
+
+    // console.log(`Día: ${day}, Hora: ${hour}`); // Para depuración
+
+    // if (day > 5 || hour < 6 || hour >= 22) {
+    //     res.status(403).json({ error: 'Fuera de horario permitido para operar (Lunes a Viernes de 6:00 a 22:00 hora de México)' });
+    //     return;
+    // }
+
     // Determina el lado de la orden
     let side: 'Buy' | 'Sell';
     if (req.body.tipo && typeof req.body.tipo === 'string') {
@@ -178,11 +174,11 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Antes de abrir una nueva posición, verificar si ya existe una posición abierta
-   // const openPosition = await bybitService.getOpenPosition(symbol);
-    // if (openPosition) {
-    //     res.status(400).json({ error: 'Ya existe una posición abierta para este símbolo' });
-    //     return;
-    // }
+    const openPosition = await bybitService.getOpenPosition(symbol);
+    if (openPosition) {
+        res.status(400).json({ error: 'Ya existe una posición abierta para este símbolo' });
+        return;
+    }
 
     // Configuración de la estrategia
     const qty = ORDER_QTY;
@@ -223,25 +219,5 @@ function calculateTPandSL(price:number, side:string, takeProfit:number, stopLoss
         };
     }
 }
-
-
-//getOrderResult
-
-router.get('/order/:orderId/:symbol', async (req: Request, res: Response) => {
-    const { orderId, symbol } = req.params;
-    try {
-        console.log(`Obteniendo resultado de la orden ${orderId} para el símbolo ${symbol}`);
-        const result = await bybitService.detectarCierrePorSLTP(symbol,orderId);
-
-
-        if (result) {
-            res.json(result);
-        } else {
-            res.status(404).json({ error: 'Orden no encontrada' });
-        }
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
-});
 
 export default router;

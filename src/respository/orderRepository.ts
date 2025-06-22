@@ -1,5 +1,5 @@
 import { dias } from "../constats";
-import sql from "../db/postgres";
+import sql from "../db/postgresV2";
 
 export interface ClosedPnlData {
   symbol: string;             // Ej: 'BTCUSDT'
@@ -34,7 +34,7 @@ export interface Operacion {
   margen: number | null;     // Margen utilizado (si se calcula)
   entrada: number;           // Precio de entrada
   tp: number ;         // Precio de Take Profit (si se calcula)
-  sl: number | null;         // Precio de Stop Loss (si se calcula)
+  sl: number ;         // Precio de Stop Loss (si se calcula)
   version: string;          // Versión del esquema, por ejemplo 'V1'
 }
 
@@ -43,36 +43,36 @@ export async function insertarOperacion(data: Operacion) {
   const fecha = new Date();
   const diaSemana = fecha.getDay();
   const diaSemanaTexto = dias[diaSemana];
-
+  console.log("insertarOperacion", data);
 
   await sql`
     INSERT INTO operaciones (
-      order_id,
-      fecha,
-      dia_semana,
-      activo,
-      quien,
-      apalancamiento,
-      tipo,
-      margen,
-      entrada,
-      tp,
-      sl
-      version
-    ) VALUES (
-      ${data.orderId},
-      ${fecha.toISOString().slice(0, 10)}, -- formato 'YYYY-MM-DD'
-      ${diaSemanaTexto},
-      ${data.symbol},
-      'bot',          -- o el nombre del trader
-      ${data.leverage},
-      ${data.tipo},
-      margen,           -- margen (si no lo calculás)
-      ${parseFloat(data.entrada.toString())},  // entrada
-     ${parseFloat(data.tp.toString())},          -- tp
-      ${data.sl ? parseFloat(data.sl.toString()) : null},  -- sl
-      'V1'
-    )
+    order_id,
+    fecha,
+    dia_semana,
+    activo,
+    quien,
+    apalancamiento,
+    tipo,
+    margen,
+    entrada,
+    version,
+    tp,
+    sl
+  ) VALUES (
+    ${data.orderId},
+    ${fecha.toISOString().slice(0, 10)},
+    ${diaSemanaTexto},
+    ${data.symbol},
+    'bot',
+    ${data.leverage},
+    ${data.tipo},
+    ${data.margen},
+    ${data.entrada},
+    'V1',
+    ${Number(data.tp.toFixed(2))},
+     ${Number(data.sl.toFixed(2))}
+  )
   `;
 }
 
@@ -86,7 +86,7 @@ export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: str
      fee = ${parseFloat(data.openFee) + parseFloat(data.closeFee)},
      ganancia_bruta = ${parseFloat(data.closedPnl)},
      ganancia_neta = ${parseFloat(data.closedPnl) - (parseFloat(data.openFee) + parseFloat(data.closeFee))},
-     ganado = ganancia_neta > 0,
+     ganado = ganancia_neta > 0
     WHERE order_id = ${orderId}
   `;
   

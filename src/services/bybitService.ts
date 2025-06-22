@@ -119,6 +119,32 @@ class BybitService {
     }
   }
 
+  async closePosition(symbol: string): Promise<any> {
+    try {
+      const openPosition = await this.getOpenPosition(symbol);
+      if (!openPosition) {
+        throw new Error('No hay posición abierta para cerrar');
+      }
+      const side = openPosition.side === 'Buy' ? 'Sell' : 'Buy';
+      const qty = Math.abs(Number(openPosition.size));
+      if (!qty || qty === 0) {
+        throw new Error('Cantidad inválida para cerrar la posición');
+      }
+      const response = await this.client.submitOrder({
+        category: 'linear',
+        symbol,
+        side,
+        orderType: 'Market',
+        qty: qty.toString(),
+        reduceOnly: true,
+        timeInForce: 'GTC',
+      });
+      return response;
+    } catch (error: any) {
+      throw new Error(`Error cerrando posición: ${error.message}`);
+    }
+  }
+
   //obtener datos de mi cuenta
   
 }

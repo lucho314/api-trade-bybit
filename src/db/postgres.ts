@@ -1,8 +1,11 @@
-import postgres from 'postgres'
+import { Pool } from 'pg';
 import { DATABASE_URL } from '../constats';
 
-console.log('Conectando a la base de datos:', DATABASE_URL);
+const pool = new Pool({
+    connectionString: DATABASE_URL ,
+    ssl: { rejectUnauthorized: false }
+});
 
-const sql = postgres(DATABASE_URL);
 
-export default sql;
+
+export default pool;

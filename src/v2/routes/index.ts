@@ -40,6 +40,7 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
         }, 3000 ); 
 
         res.json({ status: 'ok', message: `Se cancelo la orden ` });
+        return;
     }
     
     // Determina el lado de la orden
@@ -105,4 +106,6 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
     res.json({ status: 'ok', message: `La orden ejecutada` });
 });
 
-export default router;
+
+
+export default router;0
