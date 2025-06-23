@@ -44,6 +44,8 @@ export async function insertarOperacion(data: Operacion) {
   const diaSemana = fecha.getDay();
   const diaSemanaTexto = dias[diaSemana];
   console.log("insertarOperacion", data);
+  const horaActual = fecha.toTimeString().slice(0, 8);
+
 
   await sql`
     INSERT INTO operaciones (
@@ -58,7 +60,8 @@ export async function insertarOperacion(data: Operacion) {
     entrada,
     version,
     tp,
-    sl
+    sl,
+    hora_open
   ) VALUES (
     ${data.orderId},
     ${fecha.toISOString().slice(0, 10)},
@@ -71,7 +74,8 @@ export async function insertarOperacion(data: Operacion) {
     ${data.entrada},
     'V1',
     ${Number(data.tp.toFixed(2))},
-     ${Number(data.sl.toFixed(2))}
+    ${Number(data.sl.toFixed(2))},
+    ${horaActual}
   )
   `;
 }
@@ -79,14 +83,19 @@ export async function insertarOperacion(data: Operacion) {
 //actualizar ganancia perdida y fees
 export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: string) {
 
+  const openFee = parseFloat(data.openFee) || 0;
+  const closeFee = parseFloat(data.closeFee) || 0;
+  const fees = openFee + closeFee;
+  const hsmsss = new Date(parseInt(data.updatedTime)).toTimeString().slice(0, 8);
 
   await sql`
     UPDATE operaciones
     SET
-     fee = ${parseFloat(data.openFee) + parseFloat(data.closeFee)},
-     ganancia_bruta = ${parseFloat(data.closedPnl)},
-     ganancia_neta = ${parseFloat(data.closedPnl) - (parseFloat(data.openFee) + parseFloat(data.closeFee))},
-     ganado = ganancia_neta > 0
+     fee = ${fees},
+     ganancia_bruta = ${parseFloat(data.closedPnl) + fees },
+     ganancia_neta = ${parseFloat(data.closedPnl)},
+     ganado =  ${parseFloat(data.closedPnl) > 0 ? true : false},
+     hora_close = ${hsmsss}
     WHERE order_id = ${orderId}
   `;
   
