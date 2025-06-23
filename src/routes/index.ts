@@ -205,6 +205,22 @@ router.get('/env', (req: Request, res: Response) => {
 }
 );
 
+// Endpoint para obtener trades de un mes y resumen
+router.get('/trades', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const anio = parseInt(req.query.anio as string);
+        const mes = parseInt(req.query.mes as string);
+        if (!anio || !mes) {
+            res.status(400).json({ error: 'Parámetros anio y mes requeridos' });
+            return;
+        }
+        const resumen = await require('../respository/orderRepository').getTradesResumenPorMes(anio, mes);
+        res.json(resumen);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 function calculateTPandSL(price:number, side:string, takeProfit:number, stopLoss:number, leverage:number) {
     if (side === 'Buy') {

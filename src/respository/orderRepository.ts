@@ -100,3 +100,55 @@ export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: str
   `;
   
 }
+
+//test insrt insertarOperacion
+
+export async function testInsertarOperacion() {
+  const data: Operacion = {
+    orderId: "123456789",
+    symbol: "BTCUSDT",
+    quien: "bot",
+    leverage: "40",
+    tipo: "Long",
+    margen: 100,
+    entrada: 50000,
+    tp: 55000,
+    sl: 48000,
+    version: "V1"
+  };
+
+  await insertarOperacion(data);
+}
+
+// Obtener trades y resumen por mes
+export async function getTradesResumenPorMes(anio: number, mes: number) {
+  // Formato YYYY-MM para filtrar
+  const desde = `${anio}-${mes.toString().padStart(2, '0')}-01`;
+  const hasta = mes === 12 ? `${anio + 1}-01-01` : `${anio}-${(mes + 1).toString().padStart(2, '0')}-01`;
+  const trades = await sql`
+    SELECT * FROM operaciones WHERE fecha >= ${desde} AND fecha < ${hasta} and ganado is not null ORDER BY fecha ASC
+  `;
+  const tradesArr = Array.from(trades);
+  const total = tradesArr.length;
+  const ganados = tradesArr.filter((t: any) => t.ganado).length;
+  const perdidos = tradesArr.filter((t: any) => t.ganado === false).length;
+  const winrate = total ? (ganados / total) * 100 : 0;
+  const lossrate = total ? (perdidos / total) * 100 : 0;
+  const balance = tradesArr.reduce((sum: number, t: any) => sum + Number(t.ganancia_neta || 0), 0);
+
+  console.log({
+    total,
+    ganados,
+    perdidos,
+    winrate,
+    lossrate,
+    balance
+  })
+  return {
+    total,
+    winrate: Number(winrate.toFixed(2)),
+    lossrate: Number(lossrate.toFixed(2)),
+    balance: Number(balance.toFixed(2)),
+    trades
+  };
+}
