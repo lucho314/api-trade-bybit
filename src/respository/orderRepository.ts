@@ -1,4 +1,4 @@
-import { dias } from "../constats";
+import { dias, ORDER_QTY } from "../constats";
 import sql from "../db/postgresV2";
 
 export interface ClosedPnlData {
@@ -45,7 +45,8 @@ export async function insertarOperacion(data: Operacion) {
   const diaSemanaTexto = dias[diaSemana];
   console.log("insertarOperacion", data);
   const horaActual = fecha.toTimeString().slice(0, 8);
-
+  const qty = ORDER_QTY; // Cantidad por defecto para órdenes
+  const consto = (data.entrada * qty) / (Number(data.leverage) || 1); // Costo de la operación (entrada * cantidad)
 
   await sql`
     INSERT INTO operaciones (
@@ -61,7 +62,8 @@ export async function insertarOperacion(data: Operacion) {
     version,
     tp,
     sl,
-    hora_open
+    hora_open,
+    costo
   ) VALUES (
     ${data.orderId},
     ${fecha.toISOString().slice(0, 10)},
@@ -75,7 +77,8 @@ export async function insertarOperacion(data: Operacion) {
     'V1',
     ${Number(data.tp.toFixed(2))},
     ${Number(data.sl.toFixed(2))},
-    ${horaActual}
+    ${horaActual},
+    ${consto.toFixed(2) || 0}
   )
   `;
 }
@@ -87,6 +90,7 @@ export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: str
   const closeFee = parseFloat(data.closeFee) || 0;
   const fees = openFee + closeFee;
   const hsmsss = new Date(parseInt(data.updatedTime)).toTimeString().slice(0, 8);
+  console.log(data);
 
   await sql`
     UPDATE operaciones
@@ -95,7 +99,8 @@ export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: str
      ganancia_bruta = ${parseFloat(data.closedPnl) + fees },
      ganancia_neta = ${parseFloat(data.closedPnl)},
      ganado =  ${parseFloat(data.closedPnl) > 0 ? true : false},
-     hora_close = ${hsmsss}
+     hora_close = ${hsmsss},
+     porc_pl = (CASE WHEN costo IS NOT NULL AND costo != 0 THEN (${parseFloat(data.closedPnl)} / costo) * 100 ELSE NULL END)
     WHERE order_id = ${orderId}
   `;
   
@@ -135,6 +140,7 @@ export async function getTradesResumenPorMes(anio: number, mes: number) {
   const winrate = total ? (ganados / total) * 100 : 0;
   const lossrate = total ? (perdidos / total) * 100 : 0;
   const balance = tradesArr.reduce((sum: number, t: any) => sum + Number(t.ganancia_neta || 0), 0);
+
 
   console.log({
     total,
