@@ -16,34 +16,37 @@ interface ResultadosOperacion {
 /**
  * Calcula el % máximo de ganancia y drawdown (pérdida) considerando apalancamiento y fees
  */
-export function calcularMaxGainYDrawdown(operacion: Operacion): ResultadosOperacion {
-  const { entrada, leverage, side, fees, high, low, costo } = operacion;
+export function calcularMaxGainYDrawdown(op: Operacion): ResultadosOperacion {
+  // 1. Convertir leverage a número
+  const lev = parseFloat(op.leverage);
+  if (isNaN(lev) || lev <= 0) {
+    throw new Error('Leverage inválido');
+  }
 
-  const lev = parseFloat(leverage);
-  if (isNaN(lev) || lev <= 0) throw new Error('Apalancamiento inválido');
-  if (!costo || costo <= 0) throw new Error('Costo inválido');
+  // 2. Calcular cambios brutos (fracción) según side
+  let rawGain, rawDD;
+  if (op.side === 'Buy') {
+    rawGain = (op.high - op.entrada) / op.entrada;
+    rawDD   = (op.low   - op.entrada) / op.entrada;  // negativo
+  } else { // 'Sell'
+    rawGain = (op.entrada - op.low)   / op.entrada;
+    rawDD   = (op.entrada - op.high)  / op.entrada;  // negativo
+  }
 
-  // Cantidad de contratos: costo = (entrada * qty) / leverage => qty = (costo * leverage) / entrada
-  const qty = (costo * lev) / entrada;
+  // 3. Aplicar apalancamiento
+  const leveragedGain = rawGain * lev;   // fracción
+  const leveragedDD   = rawDD   * lev;   // fracción
 
-  // Ganancia/pérdida bruta en USDT
-  const gananciaMaximaUSDT = side === 'Buy'
-    ? (high - entrada) * qty
-    : (entrada - low) * qty;
+  // 4. Pasar a porcentaje
+  const grossGainPct = leveragedGain * 100;  // ej. 1.23 = 1.23%
+  const grossDDPct   = leveragedDD   * 100;  // ej. -0.56 = -0.56%
 
-  const perdidaMaximaUSDT = side === 'Buy'
-    ? (entrada - low) * qty
-    : (high - entrada) * qty;
-
-  // Aplicar fees al costo: fees en porcentaje (%), no decimal
-  const feeTotalUSDT = (costo * fees) / 100;
-
-  // Porcentaje neto sobre el costo real
-  const max_gain = ((gananciaMaximaUSDT - feeTotalUSDT) / costo) * 100;
-  const max_dd = ((perdidaMaximaUSDT - feeTotalUSDT) / costo) * 100;
+  // 5. Restar comisiones (fees viene en %, p.ej. 0.07)
+  const netGainPct = grossGainPct - op.fees;
+  const netDDPct   = grossDDPct   - op.fees;
 
   return {
-    max_gain: parseFloat(max_gain.toFixed(2)),
-    max_dd: parseFloat(max_dd.toFixed(2)),
+    max_gain: parseFloat(netGainPct.toFixed(2)),
+    max_dd:   parseFloat(netDDPct.toFixed(2))
   };
 }
