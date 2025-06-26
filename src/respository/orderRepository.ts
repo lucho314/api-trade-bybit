@@ -109,7 +109,7 @@ export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: str
      ganancia_neta = ${parseFloat(data.closedPnl)},
      ganado =  ${parseFloat(data.closedPnl) > 0 ? true : false},
      hora_close = ${hsmsss},
-     porc_pl = (CASE WHEN costo IS NOT NULL AND costo != 0 THEN (${parseFloat(data.closedPnl)} / costo) * 100 ELSE NULL END),
+    porc_pl = (CASE WHEN costo IS NOT NULL AND costo != 0 THEN ROUND((${parseFloat(data.closedPnl)} / costo) * 100, 2) ELSE NULL END),
     max_gain = ${max_gain},
     max_dd = ${max_dd},
     salida = ${parseFloat(data.avgExitPrice)},
