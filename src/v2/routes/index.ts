@@ -3,10 +3,12 @@ import { ORDER_QTY, WEBHOOK_SECRET } from '../../constats';
 import BybitServiceV2 from '../bybitService';
 import { actualizarGananciaPerdida, insertarOperacion } from '../../respository/orderRepository';
 import { calculateTPandSL } from '../utils/calculate-TP-and-SL';
+import PriceTrackerService from '../PriceTrackerService';
 
 
 const router = Router();
 const bybitService = new BybitServiceV2();
+const tracker = new PriceTrackerService('BTCUSDT');
 
 //variable globar orderId para almacenar el ID de la orden
 let orderId: string | null = null;
@@ -29,12 +31,14 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
 
      if (order && order.includes('TP')) {
        await bybitService.closePosition(symbol);
-        console.log(`Orden de cierre por TP recibida para ${symbol}`);
+        
+         const { high, low } = await tracker.stopTracking();
+
         setTimeout(async () => {
             const PNL = await bybitService.getClosedPnL(symbol);
-
+           
             if(orderId !== null && PNL) {
-               actualizarGananciaPerdida(PNL,orderId);
+               actualizarGananciaPerdida(PNL,orderId, high, low);
            }
 
         }, 3000 ); 
@@ -43,6 +47,8 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
         return;
     }
     
+    tracker.startTracking();
+
     // Determina el lado de la orden
     let side: 'Buy' | 'Sell';
     if (req.body.tipo && typeof req.body.tipo === 'string') {
@@ -119,5 +125,28 @@ router.get('/accountInfo', async (req: Request, res: Response): Promise<void> =>
     }
 }
 );
+
+
+//startTracking()
+router.get('/startTracking', async (req: Request, res: Response): Promise<void> => {
+    try {
+        await tracker.startTracking();
+        res.json({ status: 'ok', message: 'Empezó a trackear precios de BTCUSDT' });
+    } catch (error) {
+        console.error('Error al iniciar el tracking:', error);
+        res.status(500).json({ error: 'Error al iniciar el tracking' });
+    }
+});
+
+//stopTracking()
+router.get('/stopTracking', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { high, low } = await tracker.stopTracking();
+        res.json({ status: 'ok', message: 'Finalizó el tracking de precios', high, low });
+    } catch (error) {
+        console.error('Error al detener el tracking:', error);
+        res.status(500).json({ error: 'Error al detener el tracking' });
+    }
+});
 
 export default router;0
