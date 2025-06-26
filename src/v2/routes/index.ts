@@ -41,7 +41,7 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
                actualizarGananciaPerdida(PNL,orderId, high, low);
            }
 
-        }, 3000 ); 
+        }, 5000 ); 
 
         res.json({ status: 'ok', message: `Se cancelo la orden ` });
         return;
