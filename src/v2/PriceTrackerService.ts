@@ -8,7 +8,7 @@ class PriceTrackerService {
   private resolveEndTracking: ((data: { high: number, low: number }) => void) | null = null;
 
   constructor(private symbol: string) {
-    this.ws = new WebsocketClient({ market: 'v5',testnet: true });
+    this.ws = new WebsocketClient({ market: 'v5' });
 
     this.ws.on('update', this.handleMessage.bind(this));
     this.ws.on('open', () => console.log(`WS abierto para ${this.symbol}`));
