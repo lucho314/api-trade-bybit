@@ -86,7 +86,6 @@ export async function insertarOperacion(data: Operacion) {
 
 //actualizar ganancia perdida y fees
 export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: string,high: number, low: number) {
-
   const openFee = parseFloat(data.openFee) || 0;
   const closeFee = parseFloat(data.closeFee) || 0;
   const fees = openFee + closeFee;
@@ -111,8 +110,11 @@ export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: str
      ganado =  ${parseFloat(data.closedPnl) > 0 ? true : false},
      hora_close = ${hsmsss},
      porc_pl = (CASE WHEN costo IS NOT NULL AND costo != 0 THEN (${parseFloat(data.closedPnl)} / costo) * 100 ELSE NULL END),
-      max_gain = ${max_gain},
-      max_dd = ${max_dd}
+    max_gain = ${max_gain},
+    max_dd = ${max_dd},
+    salida = ${parseFloat(data.avgExitPrice)},
+    mayor_precio = ${high},
+    menor_precio = ${low}
     WHERE order_id = ${orderId}
   `;
   
