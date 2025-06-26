@@ -1,5 +1,6 @@
 import { dias, ORDER_QTY } from "../constats";
 import sql from "../db/postgresV2";
+import { calcularMaxGainYDrawdown } from "../v2/utils/calcular-maxgain-y-drawdown";
 
 export interface ClosedPnlData {
   symbol: string;             // Ej: 'BTCUSDT'
@@ -38,7 +39,7 @@ export interface Operacion {
   version: string;          // Versión del esquema, por ejemplo 'V1'
 }
 
-
+let costo = 0; // Variable para almacenar el costo de la operación
 export async function insertarOperacion(data: Operacion) {
   const fecha = new Date();
   const diaSemana = fecha.getDay();
@@ -46,7 +47,7 @@ export async function insertarOperacion(data: Operacion) {
   console.log("insertarOperacion", data);
   const horaActual = fecha.toTimeString().slice(0, 8);
   const qty = ORDER_QTY; // Cantidad por defecto para órdenes
-  const consto = (data.entrada * qty) / (Number(data.leverage) || 1); // Costo de la operación (entrada * cantidad)
+  costo = (data.entrada * qty) / (Number(data.leverage) || 1); // Costo de la operación (entrada * cantidad)
 
   await sql`
     INSERT INTO operaciones (
@@ -78,19 +79,28 @@ export async function insertarOperacion(data: Operacion) {
     ${Number(data.tp.toFixed(2))},
     ${Number(data.sl.toFixed(2))},
     ${horaActual},
-    ${consto.toFixed(2) || 0}
+    ${costo.toFixed(2) || 0}
   )
   `;
 }
 
 //actualizar ganancia perdida y fees
-export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: string) {
+export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: string,high: number, low: number) {
 
   const openFee = parseFloat(data.openFee) || 0;
   const closeFee = parseFloat(data.closeFee) || 0;
   const fees = openFee + closeFee;
   const hsmsss = new Date(parseInt(data.updatedTime)).toTimeString().slice(0, 8);
-  console.log(data);
+  const { max_gain, max_dd} = calcularMaxGainYDrawdown({
+    entrada: parseFloat(data.avgEntryPrice),
+    leverage: data.leverage,
+    side: data.side ,
+    fees: fees / 100, // Convertir a porcentaje
+    high: high,
+    low: low,
+    costo:costo
+  });
+  
 
   await sql`
     UPDATE operaciones
@@ -100,7 +110,9 @@ export async function actualizarGananciaPerdida(data: ClosedPnlData,orderId: str
      ganancia_neta = ${parseFloat(data.closedPnl)},
      ganado =  ${parseFloat(data.closedPnl) > 0 ? true : false},
      hora_close = ${hsmsss},
-     porc_pl = (CASE WHEN costo IS NOT NULL AND costo != 0 THEN (${parseFloat(data.closedPnl)} / costo) * 100 ELSE NULL END)
+     porc_pl = (CASE WHEN costo IS NOT NULL AND costo != 0 THEN (${parseFloat(data.closedPnl)} / costo) * 100 ELSE NULL END),
+      max_gain = ${max_gain},
+      max_dd = ${max_dd}
     WHERE order_id = ${orderId}
   `;
   
