@@ -67,7 +67,7 @@ router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
 
     const qty = ORDER_QTY;
     const takeProfit = 12; // 12%
-    const stopLoss = 50;   // 50%
+    const stopLoss = 43;   // 43%
     const leverage = 40;
 
     
